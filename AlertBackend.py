@@ -30,7 +30,7 @@ def login():
     message = ""
     try:
         # Try returning user-token from current session
-        return json.dumps(session["usr"])
+        return json.dumps(session["usr"]), 200
     except KeyError:
         # If there is no user-token in current session validate login
         email = request.form["login_email"]
@@ -41,10 +41,10 @@ def login():
             session['user_token'] = user_id = user['idToken']
             session['usr'] = user_id
             pprint.pprint("User logged in...:  "+ user['userId'])
-            return json.dumps(user)
+            return json.dumps(user), 200
         except:
             message = "Incorrect Credentials!"
-            return json.dumps(message)
+            return json.dumps(message), 404
             
 # END ROUTE #            
 
@@ -57,7 +57,7 @@ def alerts():
     authorizationResult = FirebaseAuth.authorizeUser(request,session);
     if authorizationResult.authorized == False:
         message = "Unauthorized.. no token."
-        return json.dumps(message)
+        return json.dumps(message), 404
     # END STANDARD AUTHORIZATION FOR ROUTES #
 
     # POST REQUEST
@@ -80,11 +80,11 @@ def alerts():
             doc = db.collection(u'alerts').document(document_id).get()
             docData = { "documentId": (document_id), "documentData": doc.to_dict()}
             pprint.pprint(docData)
-            return json.dumps(docData)
+            return json.dumps(docData), 200
         except Exception as e: 
             pprint.pprint(e)
             message = "Something went wrong..."
-            return json.dumps(message)
+            return json.dumps(message), 404
 
     # GET REQUEST            
     elif request.method == 'GET':
@@ -96,11 +96,11 @@ def alerts():
                 users_alerts_resolved.append({"documentId" : doc.id, "documentData": doc.to_dict()})
             pprint.pprint("User reading /alerts")
             pprint.pprint(users_alerts_resolved)
-            return json.dumps(users_alerts_resolved)
+            return json.dumps(users_alerts_resolved), 200
         except Exception as e: 
             pprint.pprint(e)
             message = "Something went wrong..."
-            return json.dumps(message)
+            return json.dumps(message), 404
 
 # END ROUTE #
 

@@ -1,5 +1,6 @@
 import firebase_admin
 from firebase_admin import credentials
+from firebase_admin import auth as firebaseAuth
 from firebase_admin import firestore
 from flask import Flask, session, request, redirect, render_template, url_for
 import pyrebase
@@ -7,7 +8,6 @@ import requests
 import json
 import os
 from lib import FirebaseConfig 
-from lib import FirebaseAuth
 import pprint
 
 config = FirebaseConfig.getConfig()
@@ -16,11 +16,40 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 # Use the application default credentials
-firebase = pyrebase.initialize_app(config)
-firebase_admin.initialize_app(credentials.Certificate("./serviceAccountKey.json"))
-
-auth = firebase.auth()
+default_app = firebase_admin.initialize_app(credentials.Certificate("./serviceAccountKey.json"))
 db = firestore.client()
+
+
+# pyrebase
+firebase = pyrebase.initialize_app(config)
+pyrebaseAuth = firebase.auth()
+
+###########################
+
+
+# FB User Result
+class FBAuthorizationResult:
+    """A simple Authorization class"""
+    def __init__(self, user_token, user_id, authorized):
+        self.user_tokenr = user_token
+        self.user_id = user_id
+        self.authorized = authorized
+        
+# Standard check
+# HEADER: User-Token ===  FirebaseAuthorization Token  (ID Token) 
+# HEADER: User-Id === 28 Digits Long UserHandle | User-Id  (User-Identifier on Database)
+def authorizeUser(request):
+    user_token = request.headers['User-Token']
+    user_id = request.headers['User-Id']
+    try:
+        # throws if invalid
+        firebaseAuth.verify_id_token(user_token)
+        pprint.pprint("User was authorized.... " + user_id)
+        return FBAuthorizationResult(user_token, user_id, True)
+    except Exception as e: 
+        pprint.pprint(e)
+        pprint.pprint("User could not be authorized.... " + user_id)
+        return FBAuthorizationResult(user_token, user_id, False)
 
 ###############################################################################################
 
@@ -28,25 +57,38 @@ db = firestore.client()
 @app.route('/login', methods=["POST"])
 def login():
     message = ""
+    email = request.form["login_email"]
+    password = request.form["login_password"]
     try:
-        # Try returning user-token from current session
-        return json.dumps(session["usr"]), 200
-    except KeyError:
-        # If there is no user-token in current session validate login
-        email = request.form["login_email"]
-        password = request.form["login_password"]
-        try:
-            user = auth.sign_in_with_email_and_password(email, password)
-            user = auth.refresh(user['refreshToken'])
-            session['user_token'] = user_id = user['idToken']
-            session['usr'] = user_id
-            pprint.pprint("User logged in...:  "+ user['userId'])
-            return json.dumps(user), 200
-        except:
-            message = "Incorrect Credentials!"
-            return json.dumps(message), 404
+        user = pyrebaseAuth.sign_in_with_email_and_password(email, password)
+        user = pyrebaseAuth.refresh(user['refreshToken'])
+        pprint.pprint("User logged in...:  "+ user['userId'])
+        return json.dumps(user), 200
+    except:
+        message = "Incorrect Credentials!"
+        return json.dumps(message), 404
             
-# END ROUTE #            
+# END ROUTE #         
+
+###############################################################################################
+
+# START ROUTE '/login' METHOD=[POST] #
+@app.route('/register', methods=["POST"])
+def register():
+    message = ""
+    email = request.form["register_email"]
+    password = request.form["register_password"]
+    try:
+        user = pyrebaseAuth.create_user_with_email_and_password(email, password)
+        user = pyrebaseAuth.refresh(user['refreshToken'])
+        pprint.pprint("User logged in...:  "+ user['userId'])
+        return json.dumps(user), 200
+    except Exception as e: 
+        pprint.pprint(e)
+        message = "Could not register!"
+        return json.dumps(message), 404
+            
+# END ROUTE #         
 
 ###############################################################################################
 
@@ -54,7 +96,7 @@ def login():
 @app.route('/alerts', methods=["GET", "POST"])
 def alerts():
     # START STANDARD AUTHORIZATION FOR ROUTES #
-    authorizationResult = FirebaseAuth.authorizeUser(request,session);
+    authorizationResult = authorizeUser(request);
     if authorizationResult.authorized == False:
         message = "Unauthorized.. no token."
         return json.dumps(message), 404
